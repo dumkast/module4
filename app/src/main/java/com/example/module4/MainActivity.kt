@@ -1,104 +1,63 @@
 package com.example.module4
 
 import android.os.Bundle
-import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.*
-import kotlin.system.measureTimeMillis
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.*
+import java.security.MessageDigest
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        loadAllData()
-    }
 
-    private fun loadAllData() {
-        CoroutineScope(Dispatchers.IO).launch {
-            val totalTime = measureTimeMillis {
-                val usersDeferred = async {
-                    try {
-                        loadUsers()
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Ошибка при загрузке пользователей")
-                        null
+        lifecycleScope.launch {
+            val timeoutSeconds = 10L
+
+            val result = withTimeoutOrNull(timeoutSeconds * 1000) {
+                val jsonFiles = findJsonFiles("")
+
+                val hashes = jsonFiles.map { path ->
+                    async {
+                        path to sha256(path)
                     }
-                }
+                }.awaitAll()
 
-                val salesDeferred = async {
-                    try {
-                        loadSales()
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Ошибка при загрузке продаж")
-                        null
-                    }
-                }
-
-                val weatherDeferred = async {
-                    try {
-                        loadWeather()
-                    } catch (e: Exception) {
-                        Log.e("MainActivity", "Ошибка при загрузке погоды")
-                        null
-                    }
-                }
-
-                val users = usersDeferred.await()
-                val sales = salesDeferred.await()
-                val weather = weatherDeferred.await()
-
-                println("\nРЕЗУЛЬТАТЫ:")
-                println("Пользователи: ${users ?: "ошибка"}")
-                println("Продажи: ${sales ?: "ошибка"}")
-                println("Погода: ${weather ?: "ошибка"}")
+                hashes.groupBy({ it.second }, { it.first })
+                    .filter { it.value.size > 1 }
             }
-            println("Время: ${totalTime / 1000.0} сек")
+
+            if (result == null) {
+                println("Поиск прерван по таймауту")
+            } else if (result.isEmpty()) {
+                println("Дубликаты не найдены")
+            } else {
+                result.values.forEach { group ->
+                    println("Группа дубликатов:")
+                    group.forEach { println(it) }
+                }
+            }
         }
     }
 
-    private fun readFile(fileName: String): String {
-        return assets.open(fileName).bufferedReader().use { it.readText() }
+    private fun findJsonFiles(path: String): List<String> {
+        val result = mutableListOf<String>()
+        val list = assets.list(path) ?: return emptyList()
+
+        for (name in list) {
+            val fullPath = if (path.isEmpty()) name else "$path/$name"
+            if ((assets.list(fullPath)?.isNotEmpty() == true)) {
+                result += findJsonFiles(fullPath)
+            } else if (name.endsWith(".json")) {
+                result += fullPath
+            }
+        }
+        return result
     }
 
-    private suspend fun loadUsers(): List<String> {
-        delay(1800)
-        if (Random().nextInt(100) < 30) throw Exception("Ошибка users")
-
-        val json = JSONArray(readFile("users.json"))
-        val names = mutableListOf<String>()
-        for (i in 0 until json.length()) {
-            names.add(json.getJSONObject(i).getString("name"))
-        }
-        return names
-    }
-
-    private suspend fun loadSales(): Map<String, Int> {
-        delay(1200)
-        if (Random().nextInt(100) < 20) throw Exception("Ошибка sales")
-
-        val json = JSONObject(readFile("sales.json"))
-        val items = json.getJSONArray("items")
-        val map = mutableMapOf<String, Int>()
-        for (i in 0 until items.length()) {
-            val item = items.getJSONObject(i)
-            map[item.getString("product")] = item.getInt("qty")
-        }
-        return map
-    }
-
-    private suspend fun loadWeather(): List<String> {
-        delay(2500)
-        if (Random().nextInt(100) < 25) throw Exception("Ошибка weather")
-
-        val json = JSONArray(readFile("weather.json"))
-        val list = mutableListOf<String>()
-        for (i in 0 until json.length()) {
-            val city = json.getJSONObject(i)
-            list.add("${city.getString("city")}: ${city.getInt("temp")}°C")
-        }
-        return list
+    private suspend fun sha256(path: String): String = withContext(Dispatchers.IO) {
+        val bytes = assets.open(path).use { it.readBytes() }
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.digest(bytes).joinToString("") { "%02x".format(it) }
     }
 }
