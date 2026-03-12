@@ -1,63 +1,235 @@
 package com.example.module4
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.lifecycle.lifecycleScope
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.*
-import java.security.MessageDigest
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromStream
+import java.io.InputStream
 
-class MainActivity : ComponentActivity() {
+@Serializable
+data class Repository(
+    val id: Long,
+    val full_name: String,
+    val description: String?,
+    val stargazers_count: Int,
+    val language: String?
+)
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+class RepoLoader(private val context: Context) {
 
-        lifecycleScope.launch {
-            val timeoutSeconds = 10L
+    private val json = Json { ignoreUnknownKeys = true }
+    private var allRepos: List<Repository> = emptyList()
 
-            val result = withTimeoutOrNull(timeoutSeconds * 1000) {
-                val jsonFiles = findJsonFiles("")
+    suspend fun loadRepos(): List<Repository> {
+        if (allRepos.isNotEmpty()) return allRepos
 
-                val hashes = jsonFiles.map { path ->
-                    async {
-                        path to sha256(path)
-                    }
-                }.awaitAll()
+        return withContext(Dispatchers.IO) {
+            val inputStream: InputStream = context.assets.open("repos.json")
+            allRepos = json.decodeFromStream<List<Repository>>(inputStream)
+            allRepos
+        }
+    }
 
-                hashes.groupBy({ it.second }, { it.first })
-                    .filter { it.value.size > 1 }
+    suspend fun search(query: String): List<Repository> {
+        delay(800)
+        if (query.isBlank()) return emptyList()
+
+        return withContext(Dispatchers.Default) {
+            val lowerQuery = query.lowercase()
+            allRepos.filter { repo ->
+                repo.full_name.lowercase().contains(lowerQuery) ||
+                        (repo.description?.lowercase()?.contains(lowerQuery) == true) ||
+                        (repo.language?.lowercase()?.contains(lowerQuery) == true)
+            }
+        }
+    }
+}
+
+class SearchViewModel(private val repoLoader: RepoLoader) : ViewModel() {
+
+    private val _query = MutableStateFlow("")
+    val query: StateFlow<String> = _query.asStateFlow()
+
+    private val _results = MutableStateFlow<List<Repository>>(emptyList())
+    val results: StateFlow<List<Repository>> = _results.asStateFlow()
+
+    private val _loading = MutableStateFlow(false)
+    val loading: StateFlow<Boolean> = _loading.asStateFlow()
+
+    private var searchJob: Job? = null
+
+    init {
+        viewModelScope.launch { repoLoader.loadRepos() }
+    }
+
+    fun onQueryChange(newQuery: String) {
+        _query.value = newQuery
+        searchJob?.cancel()
+
+        searchJob = viewModelScope.launch {
+            delay(500)
+            if (newQuery.isBlank()) {
+                _results.value = emptyList()
+                _loading.value = false
+                return@launch
             }
 
-            if (result == null) {
-                println("Поиск прерван по таймауту")
-            } else if (result.isEmpty()) {
-                println("Дубликаты не найдены")
-            } else {
-                result.values.forEach { group ->
-                    println("Группа дубликатов:")
-                    group.forEach { println(it) }
+            _loading.value = true
+            _results.value = repoLoader.search(newQuery)
+            _loading.value = false
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun SearchScreen(viewModel: SearchViewModel = viewModel()) {
+    val query by viewModel.query.collectAsState()
+    val results by viewModel.results.collectAsState()
+    val loading by viewModel.loading.collectAsState()
+
+    Scaffold(
+        topBar = { TopAppBar(title = { Text("Поиск репозиториев") }) }
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+        ) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { viewModel.onQueryChange(it) },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text("Введите название...") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                trailingIcon = {
+                    if (query.isNotEmpty()) {
+                        Icon(
+                            Icons.Default.Clear,
+                            null,
+                            modifier = Modifier.clickable { viewModel.onQueryChange("") }
+                        )
+                    }
+                },
+                singleLine = true
+            )
+
+            if (loading) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+                }
+            }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (results.isEmpty() && !loading && query.isNotBlank()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(32.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Ничего не найдено")
+                        }
+                    }
+                }
+
+                items(results) { repo ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        elevation = CardDefaults.cardElevation(4.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+                            Text(repo.full_name, style = MaterialTheme.typography.titleMedium)
+
+                            if (!repo.description.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.height(4.dp))
+                                Text(repo.description!!, style = MaterialTheme.typography.bodyMedium)
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                if (!repo.language.isNullOrBlank()) {
+                                    Surface(
+                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                        shape = MaterialTheme.shapes.small
+                                    ) {
+                                        Text(
+                                            repo.language!!,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelSmall
+                                        )
+                                    }
+                                }
+                                Text("Stars: ${repo.stargazers_count}")
+                            }
+                        }
+                    }
                 }
             }
         }
     }
+}
 
-    private fun findJsonFiles(path: String): List<String> {
-        val result = mutableListOf<String>()
-        val list = assets.list(path) ?: return emptyList()
+class MainActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
 
-        for (name in list) {
-            val fullPath = if (path.isEmpty()) name else "$path/$name"
-            if ((assets.list(fullPath)?.isNotEmpty() == true)) {
-                result += findJsonFiles(fullPath)
-            } else if (name.endsWith(".json")) {
-                result += fullPath
+        val repoLoader = RepoLoader(this)
+
+        setContent {
+            MaterialTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    val viewModel: SearchViewModel = viewModel(
+                        factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                            override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                                return SearchViewModel(repoLoader) as T
+                            }
+                        }
+                    )
+                    SearchScreen(viewModel)
+                }
             }
         }
-        return result
-    }
-
-    private suspend fun sha256(path: String): String = withContext(Dispatchers.IO) {
-        val bytes = assets.open(path).use { it.readBytes() }
-        val digest = MessageDigest.getInstance("SHA-256")
-        digest.digest(bytes).joinToString("") { "%02x".format(it) }
     }
 }
