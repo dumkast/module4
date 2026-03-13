@@ -1,0 +1,58 @@
+[
+  {
+    "id": 1,
+    "userId": 1,
+    "title": "Красивый закат сегодня",
+    "body": "Смотрите, какой цвет неба! Просто невероятно красиво",
+    "avatarUrl": "https://i.pravatar.cc/150?img=11"
+  },
+  {
+    "id": 2,
+    "userId": 2,
+    "title": "Новый кофе-мастер-класс",
+    "body": "Приходите все! Будем учиться варить идеальный кофе",
+    "avatarUrl": "https://i.pravatar.cc/150?img=12"
+  },
+  {
+    "id": 3,
+    "userId": 3,
+    "title": "Прогулка по парку",
+    "body": "Осень, листья, красота...",
+    "avatarUrl": "https://i.pravatar.cc/150?img=13"
+  },
+  {
+    "id": 4,
+    "userId": 4,
+    "title": "Новый телефон",
+    "body": "Купил себе новый смартфон, делюсь впечатлениями",
+    "avatarUrl": "https://i.pravatar.cc/150?img=14"
+  },
+  {
+    "id": 5,
+    "userId": 5,
+    "title": "Рецепт пиццы",
+    "body": "Сегодня готовил пиццу, получилось супер!",
+    "avatarUrl": "https://i.pravatar.cc/150?img=15"
+  },
+  {
+    "id": 6,
+    "userId": 6,
+    "title": "Спортзал",
+    "body": "Начал ходить в спортзал, результаты уже видны",
+    "avatarUrl": "https://i.pravatar.cc/150?img=16"
+  },
+  {
+    "id": 7,
+    "userId": 7,
+    "title": "Книга",
+    "body": "Прочитал отличную книгу, всем советую",
+    "avatarUrl": "https://i.pravatar.cc/150?img=17"
+  },
+  {
+    "id": 8,
+    "userId": 8,
+    "title": "Путешествие",
+    "body": "Собрался в отпуск, куда поехать?",
+    "avatarUrl": "https://i.pravatar.cc/150?img=18"
+  }
+]
