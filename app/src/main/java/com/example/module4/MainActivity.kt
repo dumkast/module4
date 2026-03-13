@@ -6,78 +6,57 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.material3.Button
-import androidx.compose.material3.Text
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
-import com.example.module4.ui.theme.AppColors
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import com.example.module4.ui.theme.Module4Theme
 
 class MainActivity : ComponentActivity() {
-    private var counterJob: Job? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val serviceIntent = Intent(this, TimerService::class.java)
-
-        if (android.os.Build.VERSION.SDK_INT >= 33) {
-            if (!checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                    .equals(android.content.pm.PackageManager.PERMISSION_GRANTED)) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 1)
-            }
-        }
-
         setContent {
-            var seconds by remember { mutableStateOf(0) }
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(AppColors.Background),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(32.dp)
+            Module4Theme {
+                var input by remember { mutableStateOf(TextFieldValue("")) }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.background),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "$seconds",
-                        fontSize = 48.sp,
-                        color = Color.Black
-                    )
-                    Button(
-                        onClick = {
-                            startForegroundService(serviceIntent)
-                            counterJob?.cancel()
-                            counterJob = lifecycleScope.launch {
-                                var s = 0
-                                while (true) {
-                                    seconds = s
-                                    delay(1000)
-                                    s++
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        TextField(
+                            value = input,
+                            onValueChange = { input = it },
+                            label = { Text("Введите время в секундах") },
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.tertiary,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.tertiary
+                            ),
+                            modifier = Modifier.width(320.dp)
+                        )
+                        Button(
+                            onClick = {
+                                val seconds = input.text.toIntOrNull() ?: 0
+                                if (seconds > 0) {
+                                    val intent = Intent(this@MainActivity, OneShotTimerService::class.java)
+                                    intent.putExtra("seconds", seconds)
+                                    startService(intent)
                                 }
-                            }
-                        },
-                        modifier = Modifier.width(200.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AppColors.Button)
-                    ) {
-                        Text("Старт", color = Color.White)
-                    }
-                    Button(
-                        onClick = {
-                            stopService(serviceIntent)
-                            counterJob?.cancel()
-                        },
-                        modifier = Modifier.width(200.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AppColors.Button)
-                    ) {
-                        Text("Стоп", color = Color.White)
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            ),
+                            modifier = Modifier.width(220.dp)
+                        ) {
+                            Text("Запустить таймер")
+                        }
                     }
                 }
             }
