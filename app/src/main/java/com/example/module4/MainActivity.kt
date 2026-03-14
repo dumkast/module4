@@ -2,203 +2,191 @@ package com.example.module4
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.Build
+import android.location.Geocoder
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.work.*
 import com.example.module4.ui.theme.Module4Theme
-import java.util.UUID
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationRequest
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
+import java.util.Locale
 
 class MainActivity : ComponentActivity() {
-    private val cities = listOf("Москва", "Нью-Йорк", "Лондон")
-    private lateinit var workManager: WorkManager
-    private val cityStatuses = mutableStateListOf<Triple<String,String,String>>()
-    private var finalReport by mutableStateOf("")
-    private var statusText by mutableStateOf("Готов начать")
-    private var buttonEnabled by mutableStateOf(true)
-    private var showCancel by mutableStateOf(false)
-    private var cityWorkRequests = mutableListOf<OneTimeWorkRequest>()
-    private var reportWorkId: UUID? = null
-
-    private val requestPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-        }
-    }
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        workManager = WorkManager.getInstance(applicationContext)
-        cityStatuses.clear()
-        cityStatuses.addAll(cities.map { Triple(it,"Ожидание","") })
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }
-
         setContent {
             Module4Theme {
-                Surface(
-                    modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text("Прогноз погоды", style = MaterialTheme.typography.headlineMedium)
-                        Text(statusText, style = MaterialTheme.typography.bodyLarge)
-                        cityStatuses.forEach { (city,status,temp) ->
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(80.dp)
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-                                    .padding(16.dp)
-                            ){
-                                Row(
-                                    verticalAlignment=Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    modifier=Modifier.fillMaxSize()
-                                ){
-                                    Column{
-                                        Text(city, style=MaterialTheme.typography.titleMedium)
-                                        Text(status)
-                                    }
-                                    if(status=="Загружается...") CircularProgressIndicator(modifier=Modifier.size(24.dp))
-                                    else if(temp.isNotEmpty()) Text(temp)
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(16.dp))
-                        Row(verticalAlignment = Alignment.CenterVertically){
-                            Button(onClick={
-                                startWeather()
-                                buttonEnabled=false
-                                showCancel=true
-                                statusText="Загрузка..."
-                            }, enabled=buttonEnabled){
-                                Text(if(buttonEnabled)"Собрать прогноз" else "В процессе...")
-                            }
-                            if(showCancel){
-                                Spacer(Modifier.width(16.dp))
-                                Button(onClick={
-                                    workManager.cancelAllWorkByTag("weather_work")
-                                    cityStatuses.clear()
-                                    cityStatuses.addAll(cities.map { Triple(it,"Ожидание","") })
-                                    buttonEnabled=true
-                                    showCancel=false
-                                    statusText="Готов начать"
-                                    finalReport=""
-                                    cityWorkRequests.clear()
-                                    reportWorkId = null
-                                    WeatherNotification.removeNotification(applicationContext)
-                                }){ Text("Отменить") }
-                            }
-                        }
-                        if(finalReport.isNotEmpty()){
-                            Spacer(Modifier.height(16.dp))
-                            Box(
-                                modifier=Modifier
-                                    .fillMaxWidth()
-                                    .background(MaterialTheme.colorScheme.primary.copy(alpha=0.1f), RoundedCornerShape(12.dp))
-                                    .padding(16.dp)
-                            ){ Text(finalReport) }
-                        }
-                    }
-                }
+                LocationScreen()
             }
         }
     }
+}
 
-    private fun startWeather() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED
-            ) {
-                statusText = "Нет разрешения на уведомления"
-                buttonEnabled = true
-                showCancel = false
-                return
-            }
-        }
-        WeatherNotification.createForegroundNotification(
-            applicationContext,
-            "Начинаем загрузку..."
+@Composable
+fun LocationScreen() {
+    val context = LocalContext.current
+    val fusedLocationClient: FusedLocationProviderClient = remember {
+        LocationServices.getFusedLocationProviderClient(context)
+    }
+    var hasLocationPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
         )
-        cityWorkRequests = cities.mapIndexed { index, city ->
-            OneTimeWorkRequestBuilder<CityWeatherWorker>()
-                .setInputData(
-                    workDataOf(
-                        "city" to city,
-                        "city_index" to index,
-                        "total_cities" to cities.size
-                    )
-                )
-                .addTag("weather_work")
-                .build()
-        }.toMutableList()
-        val cityWorkIds = cityWorkRequests.map { it.id.toString() }.toTypedArray()
-        val reportWork = OneTimeWorkRequestBuilder<ReportWorker>()
-            .setInputData(
-                workDataOf(
-                    "city_work_ids" to cityWorkIds,
-                    "total_cities" to cities.size
+    }
+    var isLoading by remember { mutableStateOf(false) }
+    var addressText by remember { mutableStateOf("") }
+    var coordinatesText by remember { mutableStateOf("") }
+    var errorText by remember { mutableStateOf("") }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasLocationPermission = permissions[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+                permissions[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+    }
+    LaunchedEffect(Unit) {
+        if (!hasLocationPermission) {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
                 )
             )
-            .addTag("weather_work")
-            .build()
-        reportWorkId = reportWork.id
-        workManager.beginWith(cityWorkRequests)
-            .then(reportWork)
-            .enqueue()
-        cities.forEachIndexed { index, city ->
-            workManager.getWorkInfoByIdLiveData(cityWorkRequests[index].id)
-                .observe(this) { info ->
-                    info?.let {
-                        val status = when(it.state){
-                            WorkInfo.State.RUNNING, WorkInfo.State.ENQUEUED -> "Загружается..."
-                            WorkInfo.State.SUCCEEDED -> "Готово"
-                            WorkInfo.State.CANCELLED -> "Отменено"
-                            else -> "Ожидание"
-                        }
-                        val temp = if(it.state==WorkInfo.State.SUCCEEDED){
-                            val t = it.outputData.getInt("temperature",0)
-                            val cond = it.outputData.getString("conditions")?:""
-                            "$t°C, $cond"
-                        } else ""
-                        cityStatuses[index] = Triple(city,status,temp)
-                    }
-                }
         }
-        workManager.getWorkInfoByIdLiveData(reportWork.id)
-            .observe(this) { info ->
-                if(info?.state==WorkInfo.State.SUCCEEDED){
-                    finalReport = info.outputData.getString("report")?:""
-                    statusText = "Отчёт готов!"
-                    buttonEnabled = true
-                    showCancel = false
-                    cityWorkRequests.clear()
-                    reportWorkId = null
-                }
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        } else {
+            if (addressText.isNotEmpty() || coordinatesText.isNotEmpty()) {
+                Text(
+                    text = addressText,
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = coordinatesText,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
+            if (errorText.isNotEmpty()) {
+                Text(
+                    text = errorText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "Нажмите кнопку",
+                style = MaterialTheme.typography.headlineSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = {
+                    if (hasLocationPermission) {
+                        isLoading = true
+                        errorText = ""
+                        addressText = ""
+                        coordinatesText = ""
+                        val cancellationTokenSource = CancellationTokenSource()
+                        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 100)
+                            .setWaitForAccurateLocation(true)
+                            .build()
+
+                        fusedLocationClient.getCurrentLocation(
+                            request.priority,
+                            cancellationTokenSource.token
+                        ).addOnSuccessListener { location ->
+                            if (location != null) {
+                                val latitude = location.latitude
+                                val longitude = location.longitude
+                                coordinatesText = "Lat: $latitude\n Lng: $longitude"
+
+                                try {
+                                    val geocoder = Geocoder(context, Locale("ru"))
+                                    val addresses = geocoder.getFromLocation(latitude, longitude, 1)
+                                    if (addresses != null && addresses.isNotEmpty()) {
+                                        val address = addresses[0]
+                                        val fullAddress = (0..address.maxAddressLineIndex)
+                                            .map { address.getAddressLine(it) }
+                                            .joinToString(", ")
+                                        addressText = fullAddress
+                                    } else {
+                                        errorText = "Адрес не найден"
+                                    }
+                                    isLoading = false
+                                } catch (e: Exception) {
+                                    errorText = "Ошибка геокодирования: ${e.message}"
+                                    isLoading = false
+                                }
+                            } else {
+                                errorText = "Местоположение не определено"
+                                isLoading = false
+                            }
+                        }.addOnFailureListener { exception ->
+                            errorText = "Ошибка получения местоположения: ${exception.message}"
+                            isLoading = false
+                        }
+                    } else {
+                        errorText = "Разрешение на местоположение не предоставлено"
+                        permissionLauncher.launch(
+                            arrayOf(
+                                Manifest.permission.ACCESS_FINE_LOCATION,
+                                Manifest.permission.ACCESS_COARSE_LOCATION
+                            )
+                        )
+                    }
+                },
+                modifier = Modifier.width(200.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary
+                )
+            ) {
+                Text(
+                    "Получить мой адрес",
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+        }
     }
 }
