@@ -13,13 +13,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             Module4Theme {
-                val viewModel: CurrencyViewModel = viewModel(
+                val viewModel: CompassViewModel = viewModel(
                     factory = object : ViewModelProvider.Factory {
                         override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                            CurrencyViewModel(CurrencyRepository()) as T
+                            CompassViewModel(CompassRepository(this@MainActivity)) as T
                     }
                 )
-                CurrencyScreen(viewModel)
+                CompassScreen(viewModel)
             }
         }
     }
