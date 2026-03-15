@@ -53,7 +53,7 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation("androidx.work:work-runtime-ktx:2.10.2")
 
-    implementation("com.google.android.gms:play-services-location:21.3.0")
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
